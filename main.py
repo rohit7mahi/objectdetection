@@ -71,36 +71,48 @@ def process_video(video_path, output_json_path, subobject_save_folder):
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
         # Run YOLO detection
-        results = model.predict(frame_rgb, device='cpu')
+        results = model.predict(frame_rgb, device='cpu')  # Predictions are now a list
 
         # Parse detections
         frame_data = {"frame": frame_idx, "detections": []}
-        for result in results.xyxy[0]:  # Loop through detected objects
-            x1, y1, x2, y2, conf, cls = map(int, result.tolist()[:6])
-            label = model.names[cls]
+        for result in results:  # Iterate through prediction results
+            boxes = result.boxes  # Get detected bounding boxes
+            for box in boxes:
+                # Extract bounding box details
+                x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
+                conf = box.conf[0]  # Confidence score
+                cls = int(box.cls[0])  # Class ID
+                label = model.names[cls]
 
-            if label in main_objects:
-                detection = {
-                    "object": label,
-                    "id": cls,
-                    "bbox": [x1, y1, x2, y2],
-                    "subobject": []
-                }
+                if label in main_objects:
+                    detection = {
+                        "object": label,
+                        "id": cls,
+                        "bbox": [x1, y1, x2, y2],
+                        "subobject": []
+                    }
 
-                # Check for sub-objects
-                for sub_result in results.xyxy[0]:
-                    sub_x1, sub_y1, sub_x2, sub_y2, sub_conf, sub_cls = map(int, sub_result.tolist()[:6])
-                    sub_label = model.names[sub_cls]
-                    if sub_label in sub_objects and is_within_bbox([sub_x1, sub_y1, sub_x2, sub_y2], [x1, y1, x2, y2]):
-                        subobject_data = {
-                            "object": sub_label,
-                            "id": sub_cls,
-                            "bbox": [sub_x1, sub_y1, sub_x2, sub_y2]
-                        }
-                        detection["subobject"].append(subobject_data)
-                        save_cropped_image(frame, sub_x1, sub_y1, sub_x2, sub_y2, label, sub_label, subobject_save_folder)
+                    # Check for sub-objects
+                    for sub_box in boxes:
+                        sub_x1, sub_y1, sub_x2, sub_y2 = map(int, sub_box.xyxy[0].tolist())
+                        sub_conf = sub_box.conf[0]
+                        sub_cls = int(sub_box.cls[0])
+                        sub_label = model.names[sub_cls]
 
-                frame_data["detections"].append(detection)
+                        if sub_label in sub_objects and is_within_bbox(
+                            [sub_x1, sub_y1, sub_x2, sub_y2], [x1, y1, x2, y2]
+                        ):
+                            subobject_data = {
+                                "object": sub_label,
+                                "id": sub_cls,
+                                "bbox": [sub_x1, sub_y1, sub_x2, sub_y2],
+                            }
+                            detection["subobject"].append(subobject_data)
+                            save_cropped_image(
+                                frame, sub_x1, sub_y1, sub_x2, sub_y2, label, sub_label, subobject_save_folder
+                            )
+
+                    frame_data["detections"].append(detection)
 
         detection_results.append(frame_data)
 
